@@ -2,3 +2,7 @@ Notes.txt
 *.pyc
 __pycache__/
 .vscode
+*.egg-info
+build/
+dist/
+*.egg
