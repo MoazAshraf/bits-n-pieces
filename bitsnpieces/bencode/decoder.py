@@ -1,4 +1,4 @@
-## Decoding
+## Decoding B-encoded data
 from collections import OrderedDict
 
 
