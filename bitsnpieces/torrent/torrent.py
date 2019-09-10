@@ -1,28 +1,29 @@
 from collections import OrderedDict
+from datetime import datetime
 
+from . import TorrentError
 from bitsnpieces.bencode import decoder
-from .torrentinfo import TorrentInfo
-from . import torrentinfo
+from .datainfo import DataInfo
+from . import datainfo
 
 
-TORRENT_KEYS = [
-    b'announce',
-    b'announce-list',
-    b'comment',
-    b'created by',
-    b'creation date',
-    b'encoding'
-]
-
-class TorrentError(Exception):
-    pass
+TORRENT_KEYS = [b'announce', b'announce-list', b'comment', b'created by', b'creation date', b'encoding', b'info']
 
 
 class Torrent(object):
     """class for abstracting .torrent files"""
-    def __init__(self):
+    def __init__(self, meta_info: OrderedDict=None):
         # setup torrent meta-info dictionary
-        self.clear()
+        if meta_info is None:
+            self._meta_info = OrderedDict()
+            self._info = DataInfo()
+        else:
+            for key in meta_info.keys():
+                if key not in TORRENT_KEYS:
+                    # TODO: make this a warning for BitTorrent forward-compatibility
+                    raise TorrentError(f"unknown torrent meta-info key '{key.decode('utf-8')}'")
+            self._meta_info = meta_info
+            self._info = DataInfo(self._meta_info.get(b'info'))
     
     def __str__(self) -> str:
         info_str = '\n  ' + str(self.info).replace('\n', '\n  ')
@@ -33,58 +34,74 @@ class Torrent(object):
             f"created by: {str(self.created_by)}",
             f"creation date: {str(self.creation_date)}",
             f"encoding: {str(self.encoding)}",
-            f"file info: {info_str}"
+            f"info: {info_str}"
         ]
         return '\n'.join(filter(lambda x: not x.endswith('None'), s))
     
     def __repr__(self) -> str:
         return self.__str__()
 
+    def _get_str_prop(self, key: bytes) -> str:
+        """returns a utf-8 string property from the meta info dictionary or None if non-existent"""
+        prop = self._meta_info.get(key)
+        if prop is not None:
+            return prop.decode('utf-8')
+        return None
+    
+    @property
+    def announce(self) -> str:
+        return self._get_str_prop(b'announce')
+    
+    @property
+    def announce_list(self) -> list:
+        ann_ls = self._meta_info.get(b'announce-list')
+        if ann_ls is not None:
+            return [[url.decode('utf-8') for url in tier] for tier in ann_ls]
+        return None
+    
+    @property
+    def comment(self) -> str:
+        return self._get_str_prop(b'comment')
+    
+    @property
+    def created_by(self) -> str:
+        return self._get_str_prop(b'created by')
+    
+    @property
+    def creation_date(self) -> datetime:
+        cr_date = self._meta_info.get(b'creation date')
+        if cr_date is not None:
+            return datetime.fromtimestamp(cr_date)
+        return None
+    
+    @property
+    def encoding(self) -> str:
+        return self._get_str_prop(b'encoding')
+    
+    @property
+    def info(self) -> DataInfo:
+        return self._info
+    
     def clear(self):
         """clears torrent meta-info"""
-        self.announce = None
-        self.announce_list = None
-        self.comment = None
-        self.created_by = None
-        self.creation_date = None
-        self.encoding = None
-        self.info = None
+        self._meta_info = OrderedDict()
 
-
-def from_bencode(bs: bytes):
-    """creates a torrent from Bencoded data"""
-    # decode the B-encoded content
-    meta_info = decoder.decode(bs)
-    # create Torrent object
-    t = Torrent()
-    # store key-value pairs in meta-info dictionary
-    if not isinstance(meta_info, OrderedDict):
-        raise TorrentError("torrent file must be contain a root-level dictionary")
-    for key in meta_info:
-        if key in [b'announce', b'comment', b'created by', b'encoding']:
-            setattr(t, key.decode('utf-8'), meta_info[key].decode('utf-8'))
-        elif key == b'announce-list':
-            t.announce_list = [[i.decode('utf-8') for i in l] for l in meta_info[key]]
-        elif key == b'creation date':
-            t.creation_date = meta_info[key]
-        elif key == b'info':
-            t.info = torrentinfo.from_dict(meta_info[key])
-        else:
-            # TODO: make this a warning for BitTorrent forward-compatibility
-            raise TorrentError(f"unknown torrent meta-info key '{key.decode('utf-8')}'")
-    return t
-
-def to_bencode(torrent: Torrent) -> bytes:
-    """encodes a torrent in Bencode"""
-    # TODO:
-    pass
 
 def load(filepath: str) -> Torrent:
     """load a torrent from file"""
     # open .torrent file for binary reading
     with open(filepath, 'rb') as f:
         content = f.read()
-    return from_bencode(content)
+    # decode the B-encoded content
+    meta_info = decoder.decode(content)
+    # create Torrent object
+    t = Torrent(meta_info)
+    return t
+
+def to_bencode(torrent: Torrent) -> bytes:
+    """encodes a torrent in Bencode"""
+    # TODO:
+    pass
 
 def save(torrent: Torrent, filepath: str):
     """save a torrent to file"""
