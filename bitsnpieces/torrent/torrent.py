@@ -82,6 +82,10 @@ class Torrent(object):
     def info(self) -> DataInfo:
         return self._info
     
+    @property
+    def fullsize(self) -> int:
+        return sum(f.length for f in self.info.files)
+
     def clear(self):
         """clears torrent meta-info"""
         self._meta_info = OrderedDict()

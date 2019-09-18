@@ -1,7 +1,9 @@
 import os.path
 from collections import OrderedDict
+import hashlib
 
 from . import TorrentError
+from bitsnpieces.bencode import encoder
 
 
 INFO_KEYS = [b'piece length', b'pieces', b'private', b'name', b'files']
@@ -78,9 +80,10 @@ class DataInfo(object):
     def files(self) -> str:
         return self._files
     
-    def get_hash(self) -> bytes:
+    def get_sha1(self) -> bytes:
         """Calculate the SHA1 hash of the info dictionary. Used in Tracker requests"""
-        # TODO:
+        # TODO: encode info dictionary to Bencode
+        # TODO: calculate SHA1
         pass
 
     def clear(self):

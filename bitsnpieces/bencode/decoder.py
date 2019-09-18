@@ -107,7 +107,7 @@ def decode_list(bs: bytes, retlen: bool=False) -> list:
     return decoded
 
 def decode_dict(bs: bytes, retlen: bool=False) -> OrderedDict:
-    """decodes a B-encoded dictionary ordered"""
+    """decodes a B-encoded dictionary to and OrderedDict"""
     
     if bs[0] != TOK_DICT:
         raise DecodeError(f"invalid literal '{chr(bs[0])}', dictionary must start with 'd'")

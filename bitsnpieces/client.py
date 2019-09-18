@@ -3,10 +3,10 @@ class TorrentClient(object):
     Abstracts the BitTorrent client for a single torrent.
     """
     
-    def __init__(self, client_id=None, ip=None, port=None, numwant=50):
-        if client_id is None:
-            client_id = generate_client_id()
-        self.client_id = client_id
+    def __init__(self, id=None, ip=None, port=None):
+        if id is None:
+            id = generate_client_id()
+        self.id = id
         
         # TODO: get process IP and port
         self.ip = ip
@@ -14,9 +14,6 @@ class TorrentClient(object):
 
         self.uploaded = 0
         self.downloaded = 0
-        self.left = None
-
-        self.numwant = numwant
 
 def generate_client_id() -> str:
     """
@@ -24,4 +21,4 @@ def generate_client_id() -> str:
     Used as peer_id in tracker requests.
     """
     # TODO:
-    pass
+    return ""
