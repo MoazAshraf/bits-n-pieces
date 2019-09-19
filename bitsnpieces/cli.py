@@ -1,19 +1,28 @@
 from collections import OrderedDict
 import sys
 import math
+import random
 
 from . import __version__
 from .bencode.decoder import decode
 from . import torrent
+from .tracker import Tracker
+from .client import TorrentClient
+from .utils import generate_client_id
 
-# TODO: command line execution entry point
 def main():
-    print(f"Bits 'n' Pieces v{__version__}")
+    """
+    Command line execution entry point.
+    """
+
+    print(f"Bits 'n' Pieces v{__version__}\n")
+
     if len(sys.argv) > 1:
+        # load the torrent file
         filepath = sys.argv[1]
         torfile = torrent.load(filepath)
-        print()
-        print(torfile)
-
-        # print(math.ceil(torfile.info.files[0].length / torfile.info.piece_length))
-        # print(len(torfile.info.pieces) // 20)
+        
+        # announce a 'started' event to the tracker
+        tracker = Tracker(torfile)
+        peer_id = generate_client_id()
+        print(tracker.announce(peer_id, 6889, 0, 0, "started"))

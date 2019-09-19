@@ -82,9 +82,8 @@ class DataInfo(object):
     
     def get_sha1(self) -> bytes:
         """Calculate the SHA1 hash of the info dictionary. Used in Tracker requests"""
-        # TODO: encode info dictionary to Bencode
-        # TODO: calculate SHA1
-        pass
+        encoded_info_dict = encoder.encode_dict(self._info)
+        return hashlib.sha1(encoded_info_dict).digest()
 
     def clear(self):
         self._info = OrderedDict()

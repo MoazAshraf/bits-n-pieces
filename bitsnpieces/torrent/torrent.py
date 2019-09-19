@@ -1,10 +1,11 @@
 from collections import OrderedDict
 from datetime import datetime
 
-from . import TorrentError
+from bitsnpieces.utils import get_str_prop
 from bitsnpieces.bencode import decoder
-from .datainfo import DataInfo
+from . import TorrentError
 from . import datainfo
+from .datainfo import DataInfo
 
 
 TORRENT_KEYS = [b'announce', b'announce-list', b'comment', b'created by', b'creation date', b'encoding', b'info']
@@ -40,17 +41,10 @@ class Torrent(object):
     
     def __repr__(self) -> str:
         return self.__str__()
-
-    def _get_str_prop(self, key: bytes) -> str:
-        """returns a utf-8 string property from the meta info dictionary or None if non-existent"""
-        prop = self._meta_info.get(key)
-        if prop is not None:
-            return prop.decode('utf-8')
-        return None
     
     @property
     def announce(self) -> str:
-        return self._get_str_prop(b'announce')
+        return get_str_prop(self._meta_info, b'announce')
     
     @property
     def announce_list(self) -> list:
@@ -61,11 +55,11 @@ class Torrent(object):
     
     @property
     def comment(self) -> str:
-        return self._get_str_prop(b'comment')
+        return get_str_prop(self._meta_info, b'comment')
     
     @property
     def created_by(self) -> str:
-        return self._get_str_prop(b'created by')
+        return get_str_prop(self._meta_info, b'created by')
     
     @property
     def creation_date(self) -> datetime:
@@ -76,14 +70,14 @@ class Torrent(object):
     
     @property
     def encoding(self) -> str:
-        return self._get_str_prop(b'encoding')
+        return get_str_prop(self._meta_info, b'encoding')
     
     @property
     def info(self) -> DataInfo:
         return self._info
     
     @property
-    def fullsize(self) -> int:
+    def total_size(self) -> int:
         return sum(f.length for f in self.info.files)
 
     def clear(self):
