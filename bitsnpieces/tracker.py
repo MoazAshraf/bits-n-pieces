@@ -1,5 +1,6 @@
-import requests
-import urllib.parse
+# import requests
+import aiohttp
+from urllib.parse import urlencode
 
 from .bencode import decoder
 from .utils import get_str_prop, ip_from_bytes, decode_port
@@ -9,8 +10,8 @@ class TrackerResponse(object):
     Abstarcts a tracker response for a single torrent
     """
     
-    def __init__(self, http_response):
-        self._response = decoder.decode(http_response.content)
+    def __init__(self, response_data):
+        self._response = decoder.decode(response_data)
         self._failed = b'failure reason' in self._response
         self._peers = None
         
@@ -98,10 +99,19 @@ class Tracker(object):
     Abstracts the BitTorrent tracker connection for a single torrent
     """
     
-    def __init__(self, torrent):
+    def __init__(self, torrent, raise_on_failure: bool=False):
         self.torrent = torrent
+        self.http_session = aiohttp.ClientSession()
+        self.raise_on_failure = raise_on_failure
+    
+    async def close(self):
+        """
+        Must be awaited and done before Tracker is deleted
+        """
 
-    def announce(self, peer_id: str, port: int, uploaded: int, downloaded: int, event: str=None) -> TrackerResponse:
+        await self.http_session.close()
+
+    async def announce(self, peer_id: str, port: int, uploaded: int, downloaded: int, event: str=None) -> TrackerResponse:
         """
         Makes an announce call to the tracker to update client's
         stats on the server as well as get a list of peers to
@@ -122,5 +132,17 @@ class Tracker(object):
             'event': event
         }
 
-        response = requests.get(self.torrent.announce, params=params)
-        return TrackerResponse(response)
+        # generate HTTP GET URL
+        url = self.torrent.announce + '?' + urlencode(params)
+
+        # make the async GET request and get response
+        async with self.http_session.get(url) as response:
+            if not response.status == 200:
+                raise ConnectionError(f"Unable to connect to the tracker, status code: {response.status}")
+            data = await response.read()
+        tracker_response = TrackerResponse(data)
+
+        # raise an exception if announce request failed
+        if self.raise_on_failure and tracker_response.failed:
+            raise ConnectionError(f"Announce request to tracker failed, failure reason: {tracker_response.failure_reason}")
+        return tracker_response
