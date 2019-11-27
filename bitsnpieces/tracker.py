@@ -3,7 +3,7 @@ import aiohttp
 from urllib.parse import urlencode
 
 from .bencode import decoder
-from .utils import get_str_prop, ip_from_bytes, decode_port
+from .utils import get_str_prop, ip_from_bytes, decode_big_endian
 
 class TrackerResponse(object):
     """
@@ -45,7 +45,7 @@ class TrackerResponse(object):
         peers_list = []
         for peer_start in range(0, len(peers_str), 6):
             ip = ip_from_bytes(peers_str[peer_start:peer_start+4])
-            port = decode_port(peers_str[peer_start+4:peer_start+6])
+            port = decode_big_endian(peers_str[peer_start+4:peer_start+6])
             peers_list.append({'ip': ip, 'port': port})
         return peers_list
     
@@ -109,9 +109,10 @@ class Tracker(object):
         Must be awaited and done before Tracker is deleted
         """
 
+        # TODO: send a shutdown message to tracker
         await self.http_session.close()
 
-    async def announce(self, peer_id: str, port: int, uploaded: int, downloaded: int, event: str=None) -> TrackerResponse:
+    async def announce(self, client_id: bytes, port: int, uploaded: int, downloaded: int, event: str=None) -> TrackerResponse:
         """
         Makes an announce call to the tracker to update client's
         stats on the server as well as get a list of peers to
@@ -123,7 +124,7 @@ class Tracker(object):
 
         params = {
             'info_hash': self.torrent.info.get_sha1(),
-            'peer_id': peer_id,
+            'peer_id': client_id,
             'port': port,
             'uploaded': uploaded,
             'downloaded': downloaded,

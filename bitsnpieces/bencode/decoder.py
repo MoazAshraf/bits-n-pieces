@@ -18,7 +18,7 @@ def is_digit(byte: int) -> bool:
 
 def decode_int(bs: bytes, retlen: bool=False) -> int:
     """decodes a B-encoded integer"""
-
+    
     if bs[0] != TOK_INT:
         raise DecodeError(f"invalid literal '{chr(bs[0])}', int must start with 'i'")
     end = 1

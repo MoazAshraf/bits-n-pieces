@@ -12,7 +12,10 @@ TORRENT_KEYS = [b'announce', b'announce-list', b'comment', b'created by', b'crea
 
 
 class Torrent(object):
-    """class for abstracting .torrent files"""
+    """
+    Abstracts torrent files
+    """
+
     def __init__(self, meta_info: OrderedDict=None):
         # setup torrent meta-info dictionary
         if meta_info is None:
@@ -86,22 +89,16 @@ class Torrent(object):
 
 
 def load(filepath: str) -> Torrent:
-    """load a torrent from file"""
+    """
+    Loads a torrent from file
+    """
     # open .torrent file for binary reading
     with open(filepath, 'rb') as f:
         content = f.read()
+
     # decode the B-encoded content
     meta_info = decoder.decode(content)
+    
     # create Torrent object
     t = Torrent(meta_info)
     return t
-
-def to_bencode(torrent: Torrent) -> bytes:
-    """encodes a torrent in Bencode"""
-    # TODO:
-    pass
-
-def save(torrent: Torrent, filepath: str):
-    """save a torrent to file"""
-    # TODO:
-    pass

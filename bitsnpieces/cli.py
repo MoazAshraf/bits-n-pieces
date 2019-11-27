@@ -16,12 +16,12 @@ async def async_main():
         # load the torrent file
         filepath = sys.argv[1]
         torfile = torrent.load(filepath)
+        # print(torfile.info.piece_length)
+        # print(torfile.info.files[0].length/torfile.info.piece_length)
 
-        # announce a 'started' event to the tracker
-        tracker = Tracker(torfile)
-        peer_id = generate_client_id()
-        print(await tracker.announce(peer_id, 6889, 0, 0, "started"))
-        await tracker.close()   # close the tracker client session
+        client = TorrentClient(torfile, port=6889)
+        await client.start()
+        await client.close()
 
 def main():
     """

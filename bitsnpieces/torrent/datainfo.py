@@ -11,7 +11,9 @@ FILE_INFO_KEYS = [b'length', b'md5sum', b'path', b'name']
 
 
 class DataInfo(object):
-    """base class for abstracting torrent data files info, for inheriting"""
+    """
+    Abstracts torrent data files info
+    """
     def __init__(self, info: OrderedDict=None):
         if info is None:
             self._info = OrderedDict()
@@ -90,7 +92,7 @@ class DataInfo(object):
 
 
 class DataFileInfo(object):
-    """class for abstracting data-file info"""
+    """Abstracts a data file's info"""
     def __init__(self, file: OrderedDict=None):
         if file is None:
             self._file = OrderedDict()
