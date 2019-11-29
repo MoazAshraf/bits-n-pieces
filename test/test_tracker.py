@@ -2,7 +2,7 @@ import unittest
 from unittest import TestCase
 import asyncio
 
-from bitsnpieces.utils import generate_client_id
+from bitsnpieces.utils import generate_peer_id
 from bitsnpieces import torrent
 from bitsnpieces.tracker import Tracker
 
@@ -15,7 +15,7 @@ class TestTracker(TestCase):
 
             # announce a 'started' event to the tracker
             tracker = Tracker(torfile)
-            peer_id = generate_client_id()
+            peer_id = generate_peer_id()
             port = 6889
             tracker_response = await tracker.announce(peer_id, port, 0, 0, "started")
             await tracker.close()   # close the tracker client session

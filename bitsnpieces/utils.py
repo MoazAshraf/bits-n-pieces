@@ -65,7 +65,7 @@ def bytes_to_bitlist(string: bytes) -> list:
         bitlist += byte_to_bitlist(b)
     return bitlist
 
-def generate_client_id() -> str:
+def generate_peer_id() -> str:
     """
     Generates a random ID for a BitTorrent client, used as peer_id in tracker requests
     """

@@ -4,14 +4,14 @@ import struct
 import random
 
 from bitsnpieces import peer
-from bitsnpieces.client import generate_client_id
+from bitsnpieces.client import generate_peer_id
 
 
 class TestDecodePeerMessages(TestCase):
     def test_decode_handshake(self):
         reserved = bytes([0] * 8)
         info_hash = bytes([random.randint(0, 255) for _ in range(20)])
-        client_id = generate_client_id()
+        client_id = generate_peer_id()
         handshake = bytes([19]) + b'BitTorrent protocol' + reserved + info_hash + client_id
 
         msg = peer.Handshake.decode(handshake)
@@ -91,7 +91,7 @@ class TestEncodePeerMessages(TestCase):
         reserved = bytes([0] * 8)
         info_hash = bytes([random.randint(0, 255) for _ in range(20)])
         protocol_id = b'BitTorrent protocol'
-        client_id = generate_client_id()
+        client_id = generate_peer_id()
         truth = bytes([19]) + protocol_id + reserved + info_hash + client_id
 
         message = peer.Handshake(info_hash, client_id, reserved, protocol_id)

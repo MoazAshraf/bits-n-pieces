@@ -57,11 +57,21 @@ class DataInfo(object):
         return None
     
     @property
-    def pieces(self) -> bytes:
+    def piece_hashes(self) -> bytes:
         ps = self._info.get(b'pieces')
         if ps is not None:
             return ps
         return None
+    
+    @property
+    def num_pieces(self) -> int:
+        if self.piece_hashes is not None:
+            return len(self.piece_hashes) // 20
+        return None
+    
+    @property
+    def total_length(self) -> int:
+        return sum([f.length for f in self.files])
     
     @property
     def private(self) -> bool:

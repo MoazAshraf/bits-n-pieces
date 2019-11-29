@@ -9,7 +9,7 @@ from .bencode.decoder import decode
 from . import torrent
 from .tracker import Tracker
 from .client import TorrentClient
-from .utils import generate_client_id
+from .utils import generate_peer_id
 
 async def async_main():
     if len(sys.argv) > 1:
@@ -21,7 +21,7 @@ async def async_main():
 
         client = TorrentClient(torfile, port=6889)
         await client.start()
-        await client.close()
+        # await client.close()
 
 def main():
     """
