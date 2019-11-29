@@ -16,8 +16,6 @@ async def async_main():
         # load the torrent file
         filepath = sys.argv[1]
         torfile = torrent.load(filepath)
-        # print(torfile.info.piece_length)
-        # print(torfile.info.files[0].length/torfile.info.piece_length)
 
         client = TorrentClient(torfile, port=6889)
         await client.start()

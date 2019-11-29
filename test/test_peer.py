@@ -2,6 +2,7 @@ import unittest
 from unittest import TestCase
 import struct
 import random
+from bitstring import BitArray
 
 from bitsnpieces import peer
 from bitsnpieces.client import generate_peer_id
@@ -56,11 +57,14 @@ class TestDecodePeerMessages(TestCase):
         self.assertEqual(msg.piece_index, 23)
     
     def test_decode_bitfield(self):
-        bitfield_length = 500
-        encoded = struct.pack('>Ib', 1 + bitfield_length, peer.BitField.ID) + bytes([255] * bitfield_length)
+        bitfield_length = 50
+        bitfield = BitArray([i % 2 for i in range(bitfield_length)])
+        bitfield_as_bytes = bitfield.tobytes()
+        encoded = struct.pack('>Ib', 1 + len(bitfield_as_bytes), peer.BitField.ID) + bitfield_as_bytes
+
         msg = peer.BitField.decode(encoded)
         self.assertIsInstance(msg, peer.BitField)
-        self.assertEqual(msg.bitfield, bytes([255] * bitfield_length))
+        self.assertEqual(msg.bitfield[:len(bitfield)], bitfield)
 
     def test_decode_request(self):
         msg = peer.Request.decode(struct.pack('>IbIII', 13, 6, 0, 1, 16384))
@@ -130,9 +134,10 @@ class TestEncodePeerMessages(TestCase):
         self.assertEqual(message.encode(), truth)
     
     def test_encode_bitfield(self):
-        bitfield_length = 500
-        bitfield = b'\xff' * bitfield_length
-        truth = struct.pack('>Ib', 1 + bitfield_length, peer.BitField.ID) + bitfield
+        bitfield_length = 50
+        bitfield = BitArray([i % 2 for i in range(bitfield_length)])
+        bitfield_as_bytes = bitfield.tobytes()
+        truth = struct.pack('>Ib', 1 + len(bitfield_as_bytes), peer.BitField.ID) + bitfield_as_bytes
 
         message = peer.BitField(bitfield)
         self.assertEqual(message.encode(), truth)

@@ -3,7 +3,7 @@ import asyncio
 
 from .utils import generate_peer_id
 from .tracker import Tracker
-from .peer import Peer
+from .peer import Peer, Request
 
 
 class TorrentClient(object):
@@ -55,7 +55,6 @@ class TorrentClient(object):
         for peer in self.peers:
             comm_tasks.append(peer.communication_task)
 
-        print(comm_tasks)        
         await asyncio.gather(*comm_tasks)
         await self.close()
 
@@ -82,8 +81,8 @@ class PieceManager(object):
         self.downloaded = 0
 
         self.initialize_pieces()
+        self.initialize_files()
         
-    
     def initialize_pieces(self):
         """
         Initialize piece list
@@ -95,6 +94,32 @@ class PieceManager(object):
         
         self.pieces = [Piece(index, piece_length) for index in range(num_pieces - 1)]
         self.pieces.append(Piece(num_pieces - 1, last_piece_length))
+    
+    def initialize_files(self):
+        """
+        Makes the directory and file structure to download the files. 
+        """
+
+        pass
+    
+    def get_next_request(self, peer):
+        """
+        Returns next request message for this peer.
+        Returns None if no requests available (all pieces the peer has have been requested).
+        """
+
+        for index, peer_has_piece in enumerate(peer.pieces_bitarray):
+            if peer_has_piece and not self.pieces[index].downloaded and peer not in self.pieces[index].requested_from:
+                return self.pieces[index].get_next_request(peer)
+        return None
+    
+    async def download_block(self, peer, message):
+        """
+        Called when a a "Piece" message is received from a peer. Saves block and will write piece to disk
+        if a piece is complete.
+        """
+
+        await self.pieces[message.index].download_block(peer, message)
 
 
 class Piece(object):
@@ -110,27 +135,75 @@ class Piece(object):
         self.index = index
         self.length = length
 
-        # status (can be "missing", "downloading" or "complete")
-        self.status = "missing"
+        self.downloaded = False
+
+        # list of peers this whole piece has been requested from
+        self.requested_from = []
 
         # initialize blocks
         num_blocks = math.ceil(length / Piece.BLOCK_LENGTH)
         last_block_length = length - (num_blocks - 1) * Piece.BLOCK_LENGTH
 
-        self.blocks = [Block(block_index, Piece.BLOCK_LENGTH) for block_index in range(num_blocks - 1)]
-        self.blocks.append(Block(num_blocks - 1, last_block_length))
+        self.blocks = [Block(self.index, block_index, Piece.BLOCK_LENGTH) for block_index in range(num_blocks - 1)]
+        self.blocks.append(Block(self.index, num_blocks - 1, last_block_length))
 
+    def get_next_request(self, peer):
+        """
+        Returns next request message for this peer.
+        Returns None if no requests available (all blocks of this piece have been requested).
+        """
+
+        for block in self.blocks:
+            if not block.downloaded and peer not in block.requested_from:
+                block.requested_from.append(peer)
+                if all(peer in b.requested_from for b in self.blocks):
+                    self.requested_from.append(peer)
+                return block.request()
+        return None
+    
+    async def download_block(self, peer, message):
+        """
+        Called when a a "Piece" message is received from a peer. Saves block and will write piece to disk
+        if the piece is complete. Also updates the piece status.
+        """
+
+        block_index = message.begin // Piece.BLOCK_LENGTH
+        await self.blocks[block_index].download(message.block)
+        
+        if all(block.downloaded for block in self.blocks):
+            self.downloaded = True
+            print(f"\tPiece {self.index} is complete")
+            # TODO: verify SHA-1 hash and save to disk
 
 class Block(object):
     """
     Stores block status and data.
     """
 
-    def __init__(self, index, length):
+    def __init__(self, piece_index, block_index, length):
         # set parameters
-        self.index = index
+        self.piece_index = piece_index
+        self.block_index = block_index
         self.length = length
 
-        # status (can be "missing", "requested" or "complete")
-        self.status = "missing"
+        self.downloaded = False
+
+        # list of peers this block has been requested from
+        self.requested_from = []
+
         self.data = None
+    
+    def request(self):
+        """
+        Returns a request message for this block.
+        """
+
+        return Request(self.piece_index, self.block_index * Piece.BLOCK_LENGTH, self.length)
+    
+    async def download(self, data):
+        """
+        Called when a a "Piece" message is received from a peer. Saves block and changes its state.
+        """
+
+        self.data = data
+        self.downloaded = True

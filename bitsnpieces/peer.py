@@ -1,6 +1,6 @@
 import struct
 import asyncio
-from .utils import bitlist_to_bytes, bytes_to_bitlist
+from bitstring import BitArray
 
 
 class PeerError(Exception):
@@ -24,10 +24,11 @@ class Peer(object):
         
         # peer state
         self.is_connected = False
-        self.am_chocking = False
+        self.am_choking = False
         self.am_interested = False
-        self.peer_chocking = True
+        self.peer_choking = True
         self.peer_interested = False
+        self.pieces_bitarray = BitArray(self.torrent.info.num_pieces)
 
         # connection streams
         self.reader = None
@@ -79,7 +80,7 @@ class Peer(object):
         """
 
         # TODO: use logging instead
-        print(f"Sent {message} to {self.peer_id}")
+        print(f"Sent {message} to {self}")
         
         if not isinstance(message, PeerMessage):
             raise TypeError(f"Peer.send() requires a PeerMessage object, a {type(message).__name__} "
@@ -103,24 +104,27 @@ class Peer(object):
             await self.send(handshake)
             
             # receive and decode handshake
-            data = await self.read()
-            pstrlen = struct.unpack('>b', data[0:1])[0]
-            response_handshake = Handshake.decode(data[:49+pstrlen])
+            response_handshake = None
+            while response_handshake is None:
+                # TODO: timeout or stop when buffer exceeds certain length
+                data = await self.read()
+                if data:
+                    self.buffer += data
+                    pstrlen = struct.unpack('>b', data[0:1])[0]
+                    if len(data) >= 49+pstrlen:
+                        response_handshake = Handshake.decode(data[:49+pstrlen])
 
-            if response_handshake:
-                # store peer ID
-                self.peer_id = response_handshake.peer_id
-                print(len(self.peer_id))
-                print(data)
-                print(f"Received {response_handshake} from {self.peer_id}")
-                
-                # validate handshake
-                if response_handshake.info_hash != info_hash:
-                    raise PeerError("torrent hash and handshake response hash are not the same")
+            # store peer ID
+            self.peer_id = response_handshake.peer_id
+            print(f"Received {response_handshake} from {self}")
+            
+            # validate handshake
+            if response_handshake.info_hash != info_hash:
+                raise PeerError("torrent hash and handshake response hash are not the same")
 
-                msg_len = len(response_handshake)
-                self.buffer = data[msg_len:]
-                return True
+            msg_len = len(response_handshake)
+            self.buffer = self.buffer[msg_len:]
+            return True
 
         except ConnectionRefusedError:
             await self.disconnect()
@@ -128,55 +132,72 @@ class Peer(object):
 
     async def start_communication(self):
         """
-        Start sending communications with peer (after handshake)
+        Start sending and receiving messages to and from peer (after handshake)
         """
 
         try:
             # send an interested message
-            self.am_interested = True
             await self.send(Interested())
+            self.am_interested = True
 
-            while self.is_connected:
-                # print(f"WHILE connected to {self.peer_id}")
-
-                stream_iterator = PeerStreamIterator(self.reader, self.buffer)
-
-                async for message in stream_iterator:
-                    # TODO: use logging instead
-                    print(f"Received {message} from {self.peer_id}")
-
-                    # consume message and change client and peer status
-                    if isinstance(message, KeepAlive):
-                        # TODO: make a timeout for inactive connections and break the timeout here
-                        pass
-                    elif isinstance(message, Choke):
-                        self.peer_choking = True
-                    elif isinstance(message, Unchoke):
-                        self.peer_choking = False
-                    elif isinstance(message, Interested):
-                        self.peer_interested = True
-                    elif isinstance(message, NotInterested):
-                        self.peer_interested = False
-                    elif isinstance(message, BitField):
-                        # TODO: let client piece manager handle this
-                        pass
-                    elif isinstance(message, Have):
-                        # TODO: let client piece manager handle this
-                        pass
-                    elif isinstance(message, Request):
-                        # TODO
-                        pass
-                    elif isinstance(message, Piece):
-                        # TODO: let client piece manager handle this
-                        pass
-                    elif isinstance(message, Cancel):
-                        # TODO
-                        pass
-                
-                self.buffer = stream_iterator.buffer
+            await asyncio.gather(self.start_receiving(), self.start_sending())
         except ConnectionResetError:
             # TODO: send a cancel for the currently requested block
             await self.disconnect()
+
+    async def start_receiving(self):
+        """
+        Start receiving messages from peer (after handshake and interested)
+        """
+
+        while self.is_connected:
+            print("Receiving?")
+            stream_iterator = PeerStreamIterator(self.reader, self.buffer)
+
+            async for message in stream_iterator:
+                # TODO: use logging instead
+                print(f"Received {message} from {self}")
+
+                # consume message and change client and peer status
+                if isinstance(message, KeepAlive):
+                    # TODO: make a timeout for inactive connections and break the timeout here
+                    pass
+                elif isinstance(message, Choke):
+                    self.peer_choking = True
+                elif isinstance(message, Unchoke):
+                    self.peer_choking = False
+                elif isinstance(message, Interested):
+                    self.peer_interested = True
+                elif isinstance(message, NotInterested):
+                    self.peer_interested = False
+                elif isinstance(message, BitField):
+                    self.pieces_bitarray = message.bitfield[:len(self.pieces_bitarray)]
+                elif isinstance(message, Have):
+                    self.pieces_bitarray[message.piece_index] = True
+                elif isinstance(message, Request):
+                    # TODO
+                    pass
+                elif isinstance(message, Piece):
+                    # save the block in the piece manager
+                    await self.client.piece_manager.download_block(self, message)
+                elif isinstance(message, Cancel):
+                    # TODO
+                    pass
+            self.buffer = stream_iterator.buffer
+        
+    async def start_sending(self):
+        """
+        Start sending messages to and from peer (after handshake and interested)
+        """
+
+        while self.is_connected:
+            await asyncio.sleep(1)
+            print("Sending?")
+            if not self.peer_choking:
+                # make block requests
+                request_message = self.client.piece_manager.get_next_request(self)
+                if request_message is not None:
+                    await self.send(request_message)
 
     async def disconnect(self):
         """
@@ -226,7 +247,8 @@ class PeerStreamIterator(object):
                 if message:
                     return message
             else:
-                raise StopAsyncIteration
+                break
+        raise StopAsyncIteration
     
     def decode(self):
         """
@@ -523,15 +545,15 @@ class Have(PeerMessage):
 class BitField(PeerMessage):
     ID = 5
 
-    def __init__(self, bitfield: bytes):
-        self.bitfield = bitfield
+    def __init__(self, bitfield: BitArray):
+        self.bitfield = BitArray(bitfield.tobytes())
     
     def encode(self) -> bytes:
         """
         Encodes this message to bytes.
         """
 
-        return struct.pack('>Ib', 1 + len(self.bitfield), BitField.ID) + self.bitfield
+        return struct.pack('>Ib', 1 + len(self.bitfield) // 8, BitField.ID) + self.bitfield.tobytes()
 
     @classmethod
     def decode(cls, data: bytes):
@@ -543,13 +565,15 @@ class BitField(PeerMessage):
             msg_id = struct.unpack('>b', data[4:5])[0]
             if msg_id == cls.ID:
                 bitfield = data[5:]
+                bitfield = BitArray(bitfield)
                 return cls(bitfield)
         except:
             pass
         return None
 
     def __str__(self) -> str:
-        return f"BitField({self.bitfield})"
+        return "BitField"
+        # return f"BitField({self.bitfield})"
 
     def __repr__(self) -> str:
         return str(self)
@@ -625,7 +649,8 @@ class Piece(PeerMessage):
         return None
 
     def __str__(self) -> str:
-        return f"Piece(index: {self.index}, begin: {self.begin}, block: {self.block})"
+        return f"Piece(index: {self.index}, begin: {self.begin})"
+        # return f"Piece(index: {self.index}, begin: {self.begin}, block: {self.block})"
 
     def __repr__(self) -> str:
         return str(self)
