@@ -1,5 +1,6 @@
 import struct
 import random
+import hashlib
 
 
 PEER_ID_PREFIX = '-BP0001-'
@@ -71,3 +72,10 @@ def generate_peer_id() -> str:
     """
     
     return bytes(PEER_ID_PREFIX + ''.join(str(random.randint(0, 9)) for _ in range(12)), 'ascii')
+
+def sha1(data) -> bytes:
+    """
+    Returns SHA-1 hash of the data
+    """
+
+    return hashlib.sha1(data).digest()

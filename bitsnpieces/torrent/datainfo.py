@@ -2,6 +2,7 @@ import os.path
 from collections import OrderedDict
 import hashlib
 
+from bitsnpieces import utils
 from . import TorrentError
 from bitsnpieces.bencode import encoder
 
@@ -63,6 +64,11 @@ class DataInfo(object):
             return ps
         return None
     
+    def get_piece_hash(self, index) -> bytes:
+        begin = index * 20
+        end = begin + 20
+        return self.piece_hashes[begin:end]
+    
     @property
     def num_pieces(self) -> int:
         if self.piece_hashes is not None:
@@ -95,7 +101,7 @@ class DataInfo(object):
     def get_sha1(self) -> bytes:
         """Calculate the SHA1 hash of the info dictionary. Used in Tracker requests"""
         encoded_info_dict = encoder.encode_dict(self._info)
-        return hashlib.sha1(encoded_info_dict).digest()
+        return utils.sha1(encoded_info_dict)
 
     def clear(self):
         self._info = OrderedDict()
@@ -137,7 +143,10 @@ class DataFileInfo(object):
     def path(self) -> str:
         pth = self._file.get(b'path')
         if pth is not None:
-            return pth.decode('utf-8')
+            if isinstance(pth, bytes):
+                return pth.decode('utf-8')
+            elif isinstance(pth, list):
+                return os.path.join(*(s.decode('utf-8') for s in pth))
         return None
 
     def clear(self):

@@ -7,6 +7,7 @@ dist/
 *.egg
 
 test/downloads/
+test/temp/
 Notes.txt
 Tasks.txt
 *.drawio

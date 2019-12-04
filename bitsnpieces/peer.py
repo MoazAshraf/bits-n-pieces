@@ -13,6 +13,8 @@ class Peer(object):
     """
     
     CHUNK_SIZE = 10240
+    READ_TIMEOUT = 10
+    REQUEST_DELAY = 1
 
     def __init__(self, client, torrent, ip, port, peer_id=None):
         # parameters
@@ -71,7 +73,7 @@ class Peer(object):
         Reads data from this peer.
         """
 
-        data = await self.reader.read(Peer.CHUNK_SIZE)
+        data = await asyncio.wait_for(self.reader.read(Peer.CHUNK_SIZE), Peer.READ_TIMEOUT)
         return data
 
     async def send(self, message):
@@ -80,7 +82,7 @@ class Peer(object):
         """
 
         # TODO: use logging instead
-        print(f"Sent {message} to {self}")
+        # print(f"Sent {message} to {self}")
         
         if not isinstance(message, PeerMessage):
             raise TypeError(f"Peer.send() requires a PeerMessage object, a {type(message).__name__} "
@@ -116,7 +118,7 @@ class Peer(object):
 
             # store peer ID
             self.peer_id = response_handshake.peer_id
-            print(f"Received {response_handshake} from {self}")
+            # print(f"Received {response_handshake} from {self}")
             
             # validate handshake
             if response_handshake.info_hash != info_hash:
@@ -125,9 +127,9 @@ class Peer(object):
             msg_len = len(response_handshake)
             self.buffer = self.buffer[msg_len:]
             return True
-
-        except ConnectionRefusedError:
+        except (ConnectionRefusedError, ConnectionResetError):
             await self.disconnect()
+        
         return False
 
     async def start_communication(self):
@@ -151,12 +153,12 @@ class Peer(object):
         """
 
         while self.is_connected:
-            print("Receiving?")
+            # print("Receiving?")
             stream_iterator = PeerStreamIterator(self.reader, self.buffer)
 
             async for message in stream_iterator:
                 # TODO: use logging instead
-                print(f"Received {message} from {self}")
+                # print(f"Received {message} from {self}")
 
                 # consume message and change client and peer status
                 if isinstance(message, KeepAlive):
@@ -191,8 +193,8 @@ class Peer(object):
         """
 
         while self.is_connected:
-            await asyncio.sleep(1)
-            print("Sending?")
+            await asyncio.sleep(Peer.REQUEST_DELAY)
+            # print("Sending?")
             if not self.peer_choking:
                 # make block requests
                 request_message = self.client.piece_manager.get_next_request(self)
@@ -240,7 +242,7 @@ class PeerStreamIterator(object):
 
         while True:
             # TODO: use try and except, read() may fail with connection errors
-            data = await self.reader.read(Peer.CHUNK_SIZE)
+            data = await asyncio.wait_for(self.reader.read(Peer.CHUNK_SIZE), Peer.READ_TIMEOUT)
             if data:
                 self.buffer += data
                 message = self.decode()
