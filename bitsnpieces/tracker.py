@@ -57,7 +57,7 @@ class TrackerResponse(object):
             peer_id = peer.get(b'peer_id')
             ip = peer.get(b'ip').decode('utf-8')
             port = int(peer.get(b'port'))
-            parsed_peer = {'peer_id': peer_id, 'ip': ip, 'port': port}
+            parsed_peer = {'ip': ip, 'port': port, 'peer_id': peer_id}
             parsed_peers_list.append(parsed_peer)
         return parsed_peers_list
 
@@ -98,8 +98,8 @@ class Tracker(object):
     """
     Abstracts the BitTorrent tracker connection for a single torrent
     """
-    
-    def __init__(self, torrent, raise_on_failure: bool=False):
+
+    def __init__(self, torrent, raise_on_failure: bool=True):
         self.torrent = torrent
         self.http_session = aiohttp.ClientSession()
         self.raise_on_failure = raise_on_failure
@@ -112,7 +112,7 @@ class Tracker(object):
         # TODO: send a shutdown message to tracker
         await self.http_session.close()
 
-    async def announce(self, client_id: bytes, port: int, uploaded: int, downloaded: int, event: str=None) -> TrackerResponse:
+    async def announce(self, client_id: bytes, port: int, uploaded: int, downloaded: int, event: str="") -> TrackerResponse:
         """
         Makes an announce call to the tracker to update client's
         stats on the server as well as get a list of peers to
@@ -121,6 +121,9 @@ class Tracker(object):
         If request is successful, a TrackerResponse object is
         returned.
         """
+
+        if event is None:
+            event = ""
 
         params = {
             'info_hash': self.torrent.info.get_sha1(),

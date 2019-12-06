@@ -13,7 +13,8 @@ class Peer(object):
     """
     
     CHUNK_SIZE = 10240
-    READ_TIMEOUT = 10
+    CONNECT_TIMEOUT = 60
+    READ_TIMEOUT = 3
     REQUEST_DELAY = 1
 
     def __init__(self, client, torrent, ip, port, peer_id=None):
@@ -46,8 +47,9 @@ class Peer(object):
 
         # connect
         try:
-            self.reader, self.writer = await asyncio.open_connection(self.ip, self.port)
-        except ConnectionRefusedError:
+            self.reader, self.writer = await asyncio.wait_for(asyncio.open_connection(self.ip, self.port),
+                Peer.CONNECT_TIMEOUT)
+        except:
             raise ConnectionError
 
         # initialize buffer
@@ -56,8 +58,9 @@ class Peer(object):
         # perform a handshake
         handshake_success = await self.handshake()
         if handshake_success:
-            # start communication
             self.is_connected = True
+            print(f"Connected to and handshaked peer {self}")
+            # await self.start_communication()
             self.communication_task = asyncio.create_task(self.start_communication())
 
     async def write(self, data) -> bytes:
@@ -73,7 +76,10 @@ class Peer(object):
         Reads data from this peer.
         """
 
-        data = await asyncio.wait_for(self.reader.read(Peer.CHUNK_SIZE), Peer.READ_TIMEOUT)
+        try:
+            data = await asyncio.wait_for(self.reader.read(Peer.CHUNK_SIZE), Peer.READ_TIMEOUT)
+        except:
+            return ""
         return data
 
     async def send(self, message):
@@ -182,6 +188,11 @@ class Peer(object):
                 elif isinstance(message, Piece):
                     # save the block in the piece manager
                     await self.client.piece_manager.download_block(self, message)
+
+                    # make the next block request
+                    request_message = self.client.piece_manager.get_next_request(self)
+                    if request_message is not None:
+                        await self.send(request_message)
                 elif isinstance(message, Cancel):
                     # TODO
                     pass
@@ -210,7 +221,10 @@ class Peer(object):
         await self.writer.wait_closed()
         self.is_connected = False
         
-        print(f"Disconnected from {self.peer_id}")
+        if self in self.client.peers:
+            self.client.peers.remove(self)
+        
+        print(f"Disconnected from {self}")
     
     def __str__(self) -> str:
         s = f"[{self.ip}:{self.port}"

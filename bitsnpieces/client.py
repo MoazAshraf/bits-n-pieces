@@ -1,4 +1,5 @@
 import math
+import time
 import asyncio
 import os.path
 
@@ -40,32 +41,72 @@ class TorrentClient(object):
         Starts downloading the torrent by making announce calls to the tracker and maintaining peer connections
         """
         
-        # make the first (started) announce request to the tracker
-        tracker_response = await self.tracker.announce(self.peer_id, self.port,
-            self.piece_manager.uploaded, self.piece_manager.downloaded, 'started')
-        
-        # TODO: make periodic tracker announcements and update peer list
+        # make periodic tracker announcements and update peer list
+        await self.start_tracker_announces()
+    
+    async def start_tracker_announces(self):
+        """
+        Start sending announces to tracker and updating the peer list
+        """
 
-        # connect to each peer and start communications
-        # for i in range(1):
-        for i in range(len(tracker_response.peers)):
-            peer = Peer(self, self.torrent, **tracker_response.peers[i])
-            
+        tracker_response = None
+        event = 'started'
+
+        while not self.piece_manager.is_complete:
+            # make tracker announce request and get response
             try:
-                await peer.connect()
-                self.peers.append(peer)
+                tracker_response = await self.tracker.announce(self.peer_id, self.port,
+                    self.piece_manager.uploaded, self.piece_manager.downloaded, event)
             except ConnectionError:
-                pass
+                print("Tracker announce failed")
+                continue
+            
+            print(f"Announce to tracker {self.torrent.announce}, next request in {tracker_response.interval} seconds")
 
-        # wait for all peers to finish their communication tasks
-        comm_tasks = []
-        for peer in self.peers:
-            comm_tasks.append(peer.communication_task)
+            # update the peer list
+            asyncio.create_task(self.update_peer_list(tracker_response))
 
-        await asyncio.gather(*comm_tasks)
-        await self.close()
+            # wait until you can send another request
+            await asyncio.sleep(tracker_response.interval)
 
-    async def close(self):
+            if event == 'started':
+                event = ""
+    
+    async def update_peer_list(self, tracker_response):
+        # disconnect any peer not in the response
+        disconnected_peers = []
+        for my_peer in self.peers:
+            still_connected = False
+            for new_peer in tracker_response.peers:
+                if my_peer.ip == new_peer['ip'] and my_peer.port == new_peer['port']:
+                    still_connected = True
+                    break
+            if not still_connected:
+                disconnected_peers.append(my_peer)
+        
+        for peer in disconnected_peers:
+            await peer.disconnect()
+
+        # connect to any new peers and update the peer list
+        connected_peers = []
+        for new_peer in tracker_response.peers:
+            connected = False
+            for my_peer in self.peers:
+                if my_peer.ip == new_peer['ip'] and my_peer.port == new_peer['port']:
+                    connected = True
+            if connected:
+                connected_peers.append(my_peer)
+            else:
+                # connect to the new peer
+                peer_obj = Peer(self, self.torrent, **new_peer)
+                try:
+                    await peer_obj.connect()
+                    connected_peers.append(peer_obj)
+                except ConnectionError:
+                    pass
+        self.peers = connected_peers
+
+    async def disconnect(self):
         """
         Close connections to the tracker and any peers
         """
@@ -74,6 +115,7 @@ class TorrentClient(object):
             await peer.disconnect()
         self.peers = []
         await self.tracker.close()
+        self.is_connected = False
 
 
 class PieceManager(object):
@@ -87,6 +129,12 @@ class PieceManager(object):
         self.download_directory = download_directory
         self.uploaded = 0
         self.downloaded = 0
+        self.is_complete = False
+
+        # download metrics
+        self.latest_download_sizes = []
+        self.latest_download_times = []
+        self.num_complete_pieces = 0
 
         # initialize
         self.initialize_pieces()
@@ -121,7 +169,36 @@ class PieceManager(object):
         if a piece is complete.
         """
 
-        await self.pieces[message.index].download_block(peer, message)
+        piece = self.pieces[message.index]
+        if not piece.is_complete:
+            block_size = await piece.download_block(peer, message)
+
+            # check if piece is complete
+            if piece.is_complete:
+                self.num_complete_pieces += 1
+            if self.num_complete_pieces == self.torrent.info.num_pieces:
+                self.is_complete = True
+            
+            # update download metrics
+            self.downloaded += block_size
+            self.latest_download_sizes.append(block_size)
+            self.latest_download_times.append(time.time())
+            if len(self.latest_download_sizes) > 10:
+                self.latest_download_sizes.pop(0)
+                self.latest_download_times.pop(0)
+            
+            download_percentage = self.downloaded * 100 / self.torrent.info.total_length
+            if len(self.latest_download_sizes) <= 1:
+                download_speed = 0
+                time_left = float('inf')
+            else:
+                total_downloaded = sum(self.latest_download_sizes)
+                total_time = self.latest_download_times[-1] - self.latest_download_times[0]
+                download_speed = total_downloaded / total_time
+                time_left = (self.torrent.info.total_length - self.downloaded) / download_speed
+            print(f"Downloaded {block_size} bytes, downloaded: {download_percentage:0.2f}%, "
+                f"download speed: {download_speed:0.2f} B/s, time left: {time_left:0.2f}s")
+
     
     def write_piece(self, piece, data):
         """
@@ -175,15 +252,15 @@ class Piece(object):
     async def download_block(self, peer, message):
         """
         Called when a a "Piece" message is received from a peer. Saves block and will write piece to disk
-        if the piece is complete. Also updates the piece status.
+        if the piece is complete. Also updates the piece status. Returns size of data downloaded.
         """
 
-        if not self.is_complete:
-            block_index = message.begin // Piece.BLOCK_LENGTH
-            if not self.blocks[block_index].is_complete:
-                await self.blocks[block_index].download(message.block)
-                print(f"Block {block_index+1}/{self.num_blocks} of Piece {self.index+1} is downloaded")
-                
+        block_index = message.begin // Piece.BLOCK_LENGTH
+        if not self.blocks[block_index].is_complete:
+            await self.blocks[block_index].download(message.block)
+            
+            print(f"Block {block_index+1}/{self.num_blocks} of Piece {self.index+1} is downloaded")
+            
             if all(block.is_complete for block in self.blocks):
                 data = b""
                 for b in self.blocks:
@@ -195,6 +272,9 @@ class Piece(object):
                     self.piece_manager.write_piece(self, data)
                     self.is_complete = True
                     print(f"Piece {self.index+1}/{self.piece_manager.torrent.info.num_pieces} is verified and written to disk")
+            
+            return len(message.block)
+        return 0
 
 
 class Block(object):
@@ -236,7 +316,7 @@ class DataWriter(object):
     Writes a single torrent's data to disk
     """
 
-    MAX_TEMP_FILE_SIZE = 2 ** 20   # in bytes
+    MAX_TEMP_FILE_SIZE = 2 ** 27   # in bytes
     
     def __init__(self, torrent, download_directory):
         # parameters
@@ -301,6 +381,11 @@ class DataWriter(object):
         """
 
         # TODO: change this to appending one part of the temp data after another
+
+        if not os.path.isfile(filepath):
+            with open(filepath, 'wb') as f:
+                pass
+
         # read the current content to memory
         with open(filepath, 'rb') as f:
             file_content = f.read()

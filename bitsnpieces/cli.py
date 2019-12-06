@@ -19,7 +19,7 @@ async def async_main():
 
         client = TorrentClient(torfile, port=6889)
         await client.start()
-        # await client.close()
+        await client.disconnect()
 
 def main():
     """
