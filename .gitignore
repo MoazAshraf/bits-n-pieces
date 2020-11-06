@@ -8,6 +8,5 @@ dist/
 
 test/downloads/
 test/temp/
-Notes.txt
-Tasks.txt
-*.drawio
+
+Notes/

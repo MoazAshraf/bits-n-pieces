@@ -21,12 +21,14 @@ def decode_int(bs: bytes, retlen: bool=False) -> int:
     
     if bs[0] != TOK_INT:
         raise DecodeError(f"invalid literal '{chr(bs[0])}', int must start with 'i'")
+
     end = 1
-    if bs[1] == ord('-'):
-        end += 1
-    while is_digit(bs[end]):
-        end += 1
-    
+    try:
+        while (bs[end] == ord('-') or is_digit(bs[end])):
+            end += 1
+    except IndexError:
+        raise DecodeError("byte string too short to decode")
+
     if bs[end] != TOK_END:
         raise DecodeError(f"invalid literal '{chr(bs[end])}', int must end with 'e'")
     
@@ -92,12 +94,15 @@ def decode_list(bs: bytes, retlen: bool=False) -> list:
     end = 1
     decoded = []
     
-    while bs[end] != TOK_END:
-        decoded_val, bencode_len = decode(bs[end:], retlen=True)
-        decoded.append(decoded_val)
-        end += bencode_len
-        if end >= len(bs):
-            raise DecodeError(f"invalid last character '{chr(bs[-1])}', list must end with 'e'")
+    try:
+        while bs[end] != TOK_END:
+            decoded_val, bencode_len = decode(bs[end:], retlen=True)
+            decoded.append(decoded_val)
+            end += bencode_len
+            if end >= len(bs):
+                raise DecodeError(f"invalid last character '{chr(bs[-1])}', list must end with 'e'")
+    except IndexError:
+        raise DecodeError("byte string too short to decode")
 
     if retlen:
         # length of original B-encoded byte string
@@ -113,21 +118,25 @@ def decode_dict(bs: bytes, retlen: bool=False) -> OrderedDict:
         raise DecodeError(f"invalid literal '{chr(bs[0])}', dictionary must start with 'd'")
     end = 1
     decoded = OrderedDict()
-    while bs[end] != TOK_END:
-        try:
-            key, bencode_key_len = decode_str(bs[end:], retlen=True)
-        except DecodeError:
-            raise DecodeError(f"dictionary key must be a valid B-encoded string")
-        if key in decoded:
-            raise DecodeError(f"duplicate key '{key.decode('ascii')}' in dictionary")
-        end += bencode_key_len
-        if bs[end] == TOK_END:
-            raise DecodeError(f"missing dictionary value, dictionary ends after key '{key}'")
-        value, bencode_val_len = decode(bs[end:], retlen=True)
-        decoded[key] = value
-        end += bencode_val_len
-        if end >= len(bs):
-            raise DecodeError(f"invalid last character '{chr(bs[-1])}', dictionary must end with 'e'")
+    
+    try:
+        while bs[end] != TOK_END:
+            try:
+                key, bencode_key_len = decode_str(bs[end:], retlen=True)
+            except DecodeError:
+                raise DecodeError(f"dictionary key must be a valid B-encoded string")
+            if key in decoded:
+                raise DecodeError(f"duplicate key '{key.decode('ascii')}' in dictionary")
+            end += bencode_key_len
+            if bs[end] == TOK_END:
+                raise DecodeError(f"missing dictionary value, dictionary ends after key '{key}'")
+            value, bencode_val_len = decode(bs[end:], retlen=True)
+            decoded[key] = value
+            end += bencode_val_len
+            if end >= len(bs):
+                raise DecodeError(f"invalid last character '{chr(bs[-1])}', dictionary must end with 'e'")
+    except IndexError:
+        raise DecodeError("byte string too short to decode")
 
     if retlen:
         # length of original B-encoded byte string
