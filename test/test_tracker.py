@@ -11,7 +11,7 @@ class TestTracker(TestCase):
     def test_ubuntu_tracker_started(self):
         async def async_test(self):
             # load the torrent file
-            torfile = torrent.load("test/data/ubuntu-19.04-desktop-amd64.iso.torrent")
+            torfile = torrent.load("test/data/ubuntu-20.04.1-desktop-amd64.iso.torrent")
 
             # announce a 'started' event to the tracker
             tracker = Tracker(torfile)
