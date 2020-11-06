@@ -17,7 +17,12 @@ async def async_main():
         filepath = sys.argv[1]
         torfile = torrent.load(filepath)
 
-        client = TorrentClient(torfile, port=6889)
+        if len(sys.argv) > 2:
+            download_directory = sys.argv[2]
+        else:
+            download_directory = "."
+            
+        client = TorrentClient(torfile, download_directory=download_directory, port=6889)
         await client.start()
         await client.disconnect()
 

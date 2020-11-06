@@ -17,9 +17,9 @@ author_email = search_var("AUTHOR_EMAIL")
 setup(
     name=package_name,
     version=version,
-    packages=['bitsnpieces', 'bitsnpieces.bencode'],
+    packages=['bitsnpieces', 'bitsnpieces.bencode', 'bitsnpieces.torrent'],
     entry_points={
-        'console_scripts': ['bitsnpieces = bitsnpieces.cmdline:main']
+        'console_scripts': ['bitsnpieces = bitsnpieces.cli:main']
     },
     description=description,
     author=author,

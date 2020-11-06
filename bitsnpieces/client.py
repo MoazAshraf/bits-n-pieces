@@ -1,5 +1,6 @@
 import math
 import time
+import random
 import asyncio
 import os.path
 
@@ -13,7 +14,7 @@ class TorrentClient(object):
     Abstracts the client for a single torrent
     """
     
-    def __init__(self, torrent, download_directory: str="test/downloads",
+    def __init__(self, torrent, download_directory: str=".",
             peer_id: bytes=None, ip=None, port=None):
         # set parameters
         self.torrent = torrent
@@ -100,7 +101,7 @@ class TorrentClient(object):
                 # connect to the new peer
                 peer_obj = Peer(self, self.torrent, **new_peer)
                 try:
-                    await peer_obj.connect()
+                    asyncio.create_task(peer_obj.connect())
                     connected_peers.append(peer_obj)
                 except ConnectionError:
                     pass
@@ -111,7 +112,7 @@ class TorrentClient(object):
         Close connections to the tracker and any peers
         """
 
-        for peer in self.peers:
+        for peer in self.peers.copy():
             await peer.disconnect()
         self.peers = []
         await self.tracker.close()
@@ -122,6 +123,8 @@ class PieceManager(object):
     """
     Manages pieces for a single client
     """
+
+    NUM_LATEST_DATA_POINTS = 100
 
     def __init__(self, torrent, download_directory):
         # set parameters
@@ -158,9 +161,18 @@ class PieceManager(object):
         Returns None if no requests available (all pieces the peer has have been requested).
         """
 
-        for index, peer_has_piece in enumerate(peer.pieces_bitarray):
-            if peer_has_piece and not self.pieces[index].is_complete and peer not in self.pieces[index].requested_from:
-                return self.pieces[index].get_next_request(peer)
+        if len(peer.pieces_downloading) == 0:
+            # get a random piece request
+            pieces_bitarray = list(enumerate(peer.pieces_bitarray))
+            random.shuffle(pieces_bitarray)
+
+            for index, peer_has_piece in pieces_bitarray:
+                if peer_has_piece and not self.pieces[index].is_complete:
+                    return self.pieces[index].get_next_request(peer)
+        else:
+            piece = peer.pieces_downloading[0]
+            if not piece.is_complete:
+                return piece.get_next_request(peer)
         return None
     
     async def download_block(self, peer, message):
@@ -178,12 +190,13 @@ class PieceManager(object):
                 self.num_complete_pieces += 1
             if self.num_complete_pieces == self.torrent.info.num_pieces:
                 self.is_complete = True
+                print("Torrent download complete")
             
             # update download metrics
             self.downloaded += block_size
             self.latest_download_sizes.append(block_size)
             self.latest_download_times.append(time.time())
-            if len(self.latest_download_sizes) > 10:
+            if len(self.latest_download_sizes) > PieceManager.NUM_LATEST_DATA_POINTS:
                 self.latest_download_sizes.pop(0)
                 self.latest_download_times.pop(0)
             
@@ -194,10 +207,10 @@ class PieceManager(object):
             else:
                 total_downloaded = sum(self.latest_download_sizes)
                 total_time = self.latest_download_times[-1] - self.latest_download_times[0]
-                download_speed = total_downloaded / total_time
-                time_left = (self.torrent.info.total_length - self.downloaded) / download_speed
+                download_speed = total_downloaded / (total_time)
+                time_left = (self.torrent.info.total_length - self.downloaded) / (download_speed)
             print(f"Downloaded {block_size} bytes, downloaded: {download_percentage:0.2f}%, "
-                f"download speed: {download_speed:0.2f} B/s, time left: {time_left:0.2f}s")
+                f"download speed: {download_speed/1024:0.2f} KB/s, time left: {time_left/60:0.2f} min")
 
     
     def write_piece(self, piece, data):
@@ -224,9 +237,7 @@ class Piece(object):
         self.length = length
 
         self.is_complete = False
-
-        # list of peers this whole piece has been requested from
-        self.requested_from = []
+        self.downloading_from = []
 
         # initialize blocks
         self.num_blocks = math.ceil(length / Piece.BLOCK_LENGTH)
@@ -244,8 +255,9 @@ class Piece(object):
         for block in self.blocks:
             if not block.is_complete and peer not in block.requested_from:
                 block.requested_from.append(peer)
-                if all(peer in b.requested_from for b in self.blocks):
-                    self.requested_from.append(peer)
+                if not self in peer.pieces_downloading:
+                    peer.pieces_downloading.append(self)
+                    self.downloading_from.append(peer)
                 return block.request()
         return None
     
@@ -271,6 +283,8 @@ class Piece(object):
                 if piece_data_hash == piece_hash_in_torrent:
                     self.piece_manager.write_piece(self, data)
                     self.is_complete = True
+                    for peer in self.downloading_from:
+                        peer.pieces_downloading.remove(self)
                     print(f"Piece {self.index+1}/{self.piece_manager.torrent.info.num_pieces} is verified and written to disk")
             
             return len(message.block)
@@ -316,7 +330,7 @@ class DataWriter(object):
     Writes a single torrent's data to disk
     """
 
-    MAX_TEMP_FILE_SIZE = 2 ** 27   # in bytes
+    MAX_TEMP_FILE_SIZE = 2 ** 24   # in bytes
     
     def __init__(self, torrent, download_directory):
         # parameters
@@ -464,6 +478,10 @@ class TempFile(object):
         Writes the data at the specified position
         """
 
+        if not os.path.isfile(self.filepath):
+            with open(self.filepath, 'wb') as f:
+                pass
+
         # read the current content to memory
         file_content = self.read()
         
@@ -489,5 +507,5 @@ class TempFile(object):
         return file_content
 
     def delete(self):
-        # TODO: delete the file
-        pass
+        if os.path.isfile(self.filepath):
+            os.remove(self.filepath)

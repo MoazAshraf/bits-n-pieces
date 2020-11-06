@@ -15,7 +15,8 @@ class Peer(object):
     CHUNK_SIZE = 10240
     CONNECT_TIMEOUT = 60
     READ_TIMEOUT = 3
-    REQUEST_DELAY = 1
+    REQUEST_DELAY_AFTER_BLOCK = 0.1
+    REQUEST_DELAY_NO_BLOCK = 3
 
     def __init__(self, client, torrent, ip, port, peer_id=None):
         # parameters
@@ -32,6 +33,7 @@ class Peer(object):
         self.peer_choking = True
         self.peer_interested = False
         self.pieces_bitarray = BitArray(self.torrent.info.num_pieces)
+        self.pieces_downloading = []
 
         # connection streams
         self.reader = None
@@ -46,11 +48,13 @@ class Peer(object):
         """
 
         # connect
-        try:
-            self.reader, self.writer = await asyncio.wait_for(asyncio.open_connection(self.ip, self.port),
-                Peer.CONNECT_TIMEOUT)
-        except:
-            raise ConnectionError
+        while not self.is_connected:
+            try:
+                self.reader, self.writer = await asyncio.wait_for(asyncio.open_connection(self.ip, self.port),
+                    Peer.CONNECT_TIMEOUT)
+                self.is_connected = True
+            except:
+                continue
 
         # initialize buffer
         self.buffer = b""
@@ -58,9 +62,7 @@ class Peer(object):
         # perform a handshake
         handshake_success = await self.handshake()
         if handshake_success:
-            self.is_connected = True
             print(f"Connected to and handshaked peer {self}")
-            # await self.start_communication()
             self.communication_task = asyncio.create_task(self.start_communication())
 
     async def write(self, data) -> bytes:
@@ -190,6 +192,7 @@ class Peer(object):
                     await self.client.piece_manager.download_block(self, message)
 
                     # make the next block request
+                    await asyncio.sleep(Peer.REQUEST_DELAY_AFTER_BLOCK)
                     request_message = self.client.piece_manager.get_next_request(self)
                     if request_message is not None:
                         await self.send(request_message)
@@ -204,7 +207,7 @@ class Peer(object):
         """
 
         while self.is_connected:
-            await asyncio.sleep(Peer.REQUEST_DELAY)
+            await asyncio.sleep(Peer.REQUEST_DELAY_NO_BLOCK)
             # print("Sending?")
             if not self.peer_choking:
                 # make block requests
