@@ -1,8 +1,10 @@
 from collections import OrderedDict
+import os
 import sys
 import math
 import random
 import asyncio
+import argparse
 
 from . import __version__
 from .bencode.decoder import decode
@@ -11,25 +13,26 @@ from .tracker import Tracker
 from .client import TorrentClient
 from .utils import generate_peer_id
 
-async def async_main():
-    if len(sys.argv) > 1:
-        # load the torrent file
-        filepath = sys.argv[1]
-        torfile = torrent.load(filepath)
+async def start_download(filepath, path):
+    # load the torrent file
+    torfile = torrent.load(filepath)
 
-        if len(sys.argv) > 2:
-            download_directory = sys.argv[2]
-        else:
-            download_directory = "."
-            
-        client = TorrentClient(torfile, download_directory=download_directory, port=6889)
-        await client.start()
-        await client.disconnect()
+    # start the client
+    client = TorrentClient(torfile, download_directory=path, port=6889)
+    await client.start()
+    await client.disconnect()
 
 def main():
     """
     Command line execution entry point.
     """
 
-    print(f"Bits 'n' Pieces v{__version__}\n")
-    asyncio.run(async_main())
+    default_path = os.path.join(os.getcwd(), 'downloads')
+
+    parser = argparse.ArgumentParser(description=f"Bits 'n' Pieces v{__version__}\n")
+    parser.add_argument('torrent', help="The metainfo file path (.torrent)")
+    parser.add_argument('--path', help="The download directory path, defaults to './downloads'",
+                        default=default_path)
+
+    args = parser.parse_args()
+    asyncio.run(start_download(args.torrent, args.path))
