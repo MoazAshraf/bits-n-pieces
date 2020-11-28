@@ -1,5 +1,5 @@
 # Bits 'n' Pieces
-A BitTorrent client written in Python.
+A BitTorrent client written in Python. I followed the specification presented [here](https://wiki.theory.org/BitTorrentSpecification).
 
 ## Features:
 - Bencode encoding and decoding
