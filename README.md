@@ -11,15 +11,29 @@ A BitTorrent client written in Python.
 ## Installation and Usage:
 **Note**: you need to have python 3.7+ installed since the project uses asyncio features only available since 3.7.
 
-Install the bitsnpieces package:
+Install the bitsnpieces package using the setup.py file. For example on Linux:
 ```
-$ python setup.py install
+$ sudo python3.7 setup.py install
 ```
 
-To run invoke the bitsnpieces command. You should see the following output:
+To run, invoke the bitsnpieces command. You should see the following output:
 ```
-Bits 'n' Pieces v0.1.0
+usage: bitsnpieces [-h] [--path PATH] torrent
+bitsnpieces: error: the following arguments are required: torrent
+```
 
+You can view all the options using ```bitsnpieces -h```:
+```
+usage: bitsnpieces [-h] [--path PATH] torrent
+
+Bits 'n' Pieces v0.1.1
+
+positional arguments:
+  torrent      The metainfo file path (.torrent)
+
+optional arguments:
+  -h, --help   show this help message and exit
+  --path PATH  The download directory path, defaults to './downloads'
 ```
 
 ## Technical Details:
